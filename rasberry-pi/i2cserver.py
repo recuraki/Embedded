@@ -13,7 +13,7 @@ footer = """
 </body></html>
 """
 
-cmd_i2cset = "/usr/local/bin/i2cset"
+cmd_i2cset = "/usr/sbin/i2cset"
 
 app = Flask(__name__)
 
@@ -37,13 +37,13 @@ def hello():
 
 @app.route('/set', methods=['GET'])
 def hello_withname():
-    bus = request.args.get("name", "")
-    value = request.args.get("num", "")
+    bus = request.args.get("bus", "")
+    value = request.args.get("value", "")
     if bus == "" or value == "":
         return("<font color=red>need bus and value</font>", 200)
-    cmd = "{0} 1 0x{1} {2}".format(cmd_i2cset, bus, value)
-    res = os.cmd(cmd)
-#res = "hoge"
+    cmd = "{0} -y 1 0x{1} {2}".format(cmd_i2cset, bus, value)
+    res = os.system(cmd)
+    #res = "hoge"
     c = header
     c+= "<h1>exec mode</h1>"
     c+= "exec: {0} <br>".format(cmd)
