@@ -51,6 +51,20 @@ def hello_withname():
     c+= footer 
     return(c, 200)
 
+@app.route('/set/<bus>/<value>', methods=['GET'])
+def set_func_witharg(bus, value):
+    if bus == "" or value == "":
+        return("<font color=red>need bus and value</font>", 200)
+    cmd = "{0} -y 1 0x{1} {2}".format(cmd_i2cset, bus, value)
+    res = os.system(cmd)
+    #res = "hoge"
+    c = header
+    c+= "<h1>exec mode</h1>"
+    c+= "exec: {0} <br>".format(cmd)
+    c+= "result: {0} <br>".format(res)
+    c+= footer 
+    return(c, 200)
+
 with app.test_request_context():
     print url_for('hello')
     #print url_for('set')
