@@ -1,0 +1,10 @@
+*.atsuo
+*.atsln
+*.cproj
+Debug
+Release
+*.pyc
+cover
+.coverage
+.cache
+.cache.*
