@@ -22,6 +22,43 @@ def line_out():
 
 tMenu=0
 tFunc=1
+eth0delay = 0
+eth0loss = 0
+eth1delay = 0
+eth1loss = 0
+
+ipaddr = "172.16.0.1"
+netmask = "255.255.255.255"
+defaultgw = "172.16.0.2"
+
+settcCmd = "tc chnage qdisc change dev {eth} root delay {delay}ms loss {loss}%"
+
+def run_settc():
+    global eth0delay, eth0loss
+    global eth1delay, eth1loss
+    stCmd = "tc"
+    # eth0
+    diArg = {}
+    diArg["eth"] = "eth0"
+    diArg["delay"] = eth0delay
+    diArg["loss"] = eth0loss
+    stCmd = settcCmd.format(**diArg)
+    run_cmd(stCmd)
+    # eth1
+    diArg = {}
+    diArg["eth"] = "eth1"
+    diArg["delay"] = eth1delay
+    diArg["loss"] = eth1loss
+    stCmd = settcCmd.format(**diArg)
+    run_cmd(stCmd)
+
+setgwCmd = "ip route change default via {gwaddr} dev {eth}"
+setaddrCmd = "ip addr replace {ipaddr}/{netmask} dev {eth}"
+def run_setnetworks():
+    pass
+
+def run_cmd(stCmd):
+    print stCmd
 
 class menu(object):
 
@@ -113,42 +150,7 @@ def is_num(k):
             return(True)
     return(False)
 
-eth0delay = 0
-eth0loss = 0
-eth1delay = 0
-eth1loss = 0
-ipaddr = "172.16.0.1"
-netmask = "255.255.255.255"
-defaultgw = "172.16.0.2"
 
-settcCmd = "tc chnage qdisc change dev {eth} root delay {delay}ms loss {loss}%"
-
-def run_settc():
-    global eth0delay, eth0loss
-    global eth1delay, eth1loss
-    stCmd = "tc"
-    # eth0
-    diArg = {}
-    diArg["eth"] = "eth0"
-    diArg["delay"] = eth0delay
-    diArg["loss"] = eth0loss
-    stCmd = settcCmd.format(**diArg)
-    run_cmd(stCmd)
-    # eth1
-    diArg = {}
-    diArg["eth"] = "eth1"
-    diArg["delay"] = eth1delay
-    diArg["loss"] = eth1loss
-    stCmd = settcCmd.format(**diArg)
-    run_cmd(stCmd)
-
-setgwCmd = "ip route change default via 192.168.99.113 dev eth0"
-setaddrCmd = "ip addr replace 192.168.111.10/32 dev br0"
-def run_setnetworks():
-    pass
-
-def run_cmd(stCmd):
-    print stCmd
 
 class menu_num(menu):
     pos = 0
@@ -257,7 +259,6 @@ class loss_eth1(menu_num):
         eth1loss = rate
         run_settc()
         return(True)
-
 
 class set_ipaddr(menu):
     def postinit(self):
