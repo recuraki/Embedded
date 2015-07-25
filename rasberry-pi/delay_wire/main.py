@@ -4,33 +4,39 @@
 # Python2はipaddrモジュールを持っていない
 # sudo pip install py2-ipaddress
 
+import subprocess
 import time
 import sys
 import termios
 import tty
 import ipaddress
 import key
+import networksetting 
+import tcsetting
+import optparse
 from acm1602 import acm1602
 
-ipaddr = "172.16.0.1"
-netmask = "255.255.255.255"
-defaultgw = "172.16.0.2"
+netset = networksetting.setting()
+netset.load()
+ipaddr = netset.addr
+netmask = netset.netmask
+defaultgw = netset.gw
 
-
-# コマンドテンプレート
-settcCmd = "tc chnage qdisc change dev {eth} root delay {delay}ms loss {loss}%"
-setgwCmd = "ip route change default via {gwaddr} dev {eth}"
-setaddrCmd = "ip addr replace {ipaddr}/{netmask} dev {eth}"
-
+tcset = tcsetting.setting()
+tcset.load()
+eth0delay = tcset.eth0delay
+eth0loss  = tcset.eth0loss
+eth1delay = tcset.eth1delay
+eth1loss  = tcset.eth1loss
 
 line1 = ""
 line2 = ""
 tMenu=0
 tFunc=1
-eth0delay = 0
-eth0loss = 0
-eth1delay = 0
-eth1loss = 0
+
+settcCmd = "tc chnage qdisc change dev {eth} root delay {delay}ms loss {loss}%"
+setgwCmd = "ip route change default via {gwaddr} dev {eth}"
+setaddrCmd = "ip addr replace {addrstr} dev {eth}"
 
 def key_scan():
     """
@@ -54,21 +60,11 @@ def run_settc():
     """
     global eth0delay, eth0loss
     global eth1delay, eth1loss
-    stCmd = "tc"
-    # eth0
-    diArg = {}
-    diArg["eth"] = "eth0"
-    diArg["delay"] = eth0delay
-    diArg["loss"] = eth0loss
-    stCmd = settcCmd.format(**diArg)
-    run_cmd(stCmd)
-    # eth1
-    diArg = {}
-    diArg["eth"] = "eth1"
-    diArg["delay"] = eth1delay
-    diArg["loss"] = eth1loss
-    stCmd = settcCmd.format(**diArg)
-    run_cmd(stCmd)
+    tcset.eth0delay = eth0delay
+    tcset.eth0loss = eth0loss
+    tcset.eth1delay = eth1delay
+    tcset.eth1loss = eth1loss
+    tcset.save()
 
 def run_setnetworks():
     """
@@ -78,27 +74,22 @@ def run_setnetworks():
     diArg = {}
     diArg["eth"] = "br0"
     diArg["gwaddr"] = defaultgw
-    diArg["ipaddr"] = ipaddr
-    diArg["netmask"] = netmask
+    addr = ipaddress.IPv4Network("0.0.0.0" + "/" + netmask)
+    masknum = str(addr).split("/")[1]
+    diArg["addrstr"] = ipaddr + "/" + masknum
     stCmd = setaddrCmd.format(**diArg)
     run_cmd(stCmd)
     stCmd = setgwCmd.format(**diArg)
     run_cmd(stCmd)
     # /etc/networks/interfacesに書く
-    write_setnetworks()
-
-def write_setnetworks():
-    """
-    今はスタブ
-    """
-    print("TODO: write to network")
-    pass
+    netset.addr = ipaddr
+    netset.netmask = netmask
+    netset.gw = defaultgw
+    netset.save()
 
 def run_cmd(stCmd):
-    """
-    今はスタブ
-    """
     print stCmd
+    subprocess.call(stCmd.split(" "))
 
 class menu(object):
 
@@ -113,9 +104,10 @@ class menu(object):
         """
         主にメニューの追加
         """
-        self.menu.append(("DELAY", tMenu, menu_delay))
-        self.menu.append(("IPADDRESS", tMenu, menu_addr))
-        self.menu.append(("DUMP", tFunc, self.dump))
+        self.menu.append(("DELAY>>", tMenu, menu_delay, "SETTTING>"))
+        self.menu.append(("NETWORK>>", tMenu, menu_addr, " SETTING>"))
+        self.menu.append(("DUMP", tFunc, self.dump, ""))
+        self.menu.append(("REBOOT>>", tMenu, menu_reboot, ""))
         self.refresh_menu()
 
     def inkey(self, k):
@@ -149,7 +141,8 @@ class menu(object):
     def end_func(self):
         self.mode = 0
         self.child = None
-        self.refresh_menu()
+        self.menu = []
+        self.postinit()
 
     def inkey_myself(self, k):
         # 自分自身がキー入力を受け取った時
@@ -174,8 +167,9 @@ class menu(object):
 
     def refresh_menu(self):
         # メニューを更新する
-        global line1
+        global line1, line2
         line1 = self.menu[self.pos][0]
+        line2 = self.menu[self.pos][3]
         line_out()
         return True
     
@@ -209,24 +203,39 @@ class menu(object):
 class menu_delay(menu):
     # DELAY設定用
     def postinit(self):
-        self.menu.append(("ETH0DELAY", tMenu, delay_eth0))
-        self.menu.append(("ETH0LOSS" , tMenu, loss_eth0))
-        self.menu.append(("ETH1DELAY", tMenu, delay_eth1))
-        self.menu.append(("ETH1LOSS" , tMenu, loss_eth1))
+        global eth0delay, eth1delay
+        global eth0loss, eth1loss
+        self.menu.append(("ETH0DELAY>>", tMenu, delay_eth0, str(eth0delay) + "ms"))
+        self.menu.append(("ETH0LOSS>>" , tMenu, loss_eth0,  str(eth0loss) + "%"))
+        self.menu.append(("ETH1DELAY>>", tMenu, delay_eth1, str(eth1delay) + "ms"))
+        self.menu.append(("ETH1LOSS>>" , tMenu, loss_eth1,  str(eth1loss) + "%" ))
         self.refresh_menu()
 
 class menu_addr(menu):
     # IPアドレス設定用
     def postinit(self):
-        self.menu.append(("IPV4ADDR", tMenu, set_addr))
-        self.menu.append(("NETMASK" , tMenu, set_netmask))
-        self.menu.append(("GATEWAY", tMenu, set_gw))
-        self.menu.append(("commit", tFunc, self.commit))
+        self.menu.append(("IPV4ADDR>>", tMenu, set_addr, ipaddr))
+        self.menu.append(("NETMASK>>" , tMenu, set_netmask, netmask))
+        self.menu.append(("GATEWAY>>", tMenu, set_gw, defaultgw))
+        self.menu.append(("commit", tFunc, self.commit, ""))
         self.refresh_menu()
 
     # IPアドレスに関しては、設定後にCommitしたいので、こういう関数を作っている
     def commit(self):
         run_setnetworks()
+
+class menu_reboot(menu):
+    def postinit(self):
+        self.menu.append(("REBOOT>", tFunc, self.cancel, "CANCEL"))
+        self.menu.append(("REBOOT", tFunc, self.commit, "COMMIT"))
+        self.refresh_menu()
+
+    def cancel(self):
+        return(False)
+    def commit(self):
+        print "REBOOT"
+        pass
+
 
 def is_num(k):
     # 関数あった気がするけど、インターネットがなかったので、とりあえず。。。
@@ -297,7 +306,7 @@ class delay_eth0(menu_num):
     def postinit(self):
         global line1
         self.target = "eth0"
-        line1 = "SETDELAYETH0"
+        line1 = "SET:DELAYETH0"
         self.suffix = "ms"
         line_out()
 
@@ -312,7 +321,7 @@ class delay_eth1(menu_num):
     def postinit(self):
         global line1
         self.target = "eth1"
-        line1 = "SETDELAYETH1"
+        line1 = "SET:DELAYETH1"
         self.suffix = "ms"
         line_out()
 
@@ -327,7 +336,7 @@ class loss_eth0(menu_num):
     def postinit(self):
         global line1
         self.target = "eth0"
-        line1 = "SETLOSSETH0"
+        line1 = "SET:LOSSETH0"
         self.suffix = "%"
         self.maxlen = 3
         line_out()
@@ -346,7 +355,7 @@ class loss_eth1(menu_num):
     def postinit(self):
         global line1
         self.target = "eth1"
-        line1 = "SETLOSSETH1"
+        line1 = "SET:LOSSETH1"
         self.suffix = "%"
         self.maxlen = 3
         line_out()
@@ -367,10 +376,11 @@ class set_addr(menu):
     """
     def postinit(self):
         global line1
-        line1 = "BR0ADDR"
+        line1 = "SET:BR0ADDR"
         self.pos = 0
         self.addr = ["0"] * 12
         line_out()
+        self.refresh_ipaddr()
 
     def inkey(self, k):
         if is_num(k):
@@ -407,10 +417,11 @@ class set_addr(menu):
 class set_netmask(set_addr):
     def postinit(self):
         global line1
-        line1 = "NETMASK"
+        line1 = "SET:NETMASK"
         self.pos = 0
         self.addr = [""] * 12
         line_out()
+        self.refresh_ipaddr()
 
     def save_main(self, addrstr):
         global netmask
@@ -426,10 +437,11 @@ class set_netmask(set_addr):
 class set_gw(set_addr):
     def postinit(self):
         global line1
-        line1 = "GATEWAY"
+        line1 = "SET:GATEWAY"
         self.pos = 0
         self.addr = [""] * 12
         line_out()
+        self.refresh_ipaddr()
 
     def save_main(self, addrstr):
         global defaultgw
@@ -466,12 +478,21 @@ class key_pad():
             return(s)
 
 if __name__ == "__main__":
+    print netset.addr
+    print "a"
+    
+    parser = optparse.OptionParser()
+    parser.add_option("-p", "--USEKEYPAD", dest="f_keypad", action="store_true", default=False)
+    (options, args) = parser.parse_args()
+    if options.f_keypad:
+        kp = key_pad()
+        key_scan = kp.key_scan
+
     isLoop = True
     m = menu()
-    kp = key_pad()
+
     while isLoop:
-        #c = key_scan()
-        c = kp.key_scan()
+        c = key_scan()
         time.sleep(0.05)
         if c == "":
             continue
