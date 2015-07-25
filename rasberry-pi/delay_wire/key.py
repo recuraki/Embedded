@@ -53,7 +53,6 @@ def key_scan():
     table.append( ["7", "8", "9"])
     table.append( ["*", "0", "#"])
 
-    print table
     c, r = key_scan_raw()
 
     for i in [0, 1, 2]:
